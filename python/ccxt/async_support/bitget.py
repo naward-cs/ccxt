@@ -4,6 +4,7 @@
 # https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#how-to-contribute-code
 
 from ccxt.async_support.base.exchange import Exchange
+from ccxt.abstract.bitget import ImplicitAPI
 import asyncio
 import hashlib
 import json
@@ -33,7 +34,7 @@ from ccxt.base.decimal_to_precision import TICK_SIZE
 from ccxt.base.precise import Precise
 
 
-class bitget(Exchange):
+class bitget(Exchange, ImplicitAPI):
 
     def describe(self):
         return self.deep_extend(super(bitget, self).describe(), {
@@ -115,20 +116,18 @@ class bitget(Exchange):
                 'withdraw': False,
             },
             'timeframes': {
-                '1m': '1m',
-                '3m': '3m',
-                '5m': '5m',
-                '15m': '15m',
-                '30m': '30m',
+                '1m': '1min',
+                '5m': '5min',
+                '15m': '15min',
+                '30m': '30min',
                 '1h': '1h',
-                '2h': '2h',
                 '4h': '4h',
-                '6h': '6h',
-                '12h': '12h',
-                '1d': '1d',
-                '3d': '3d',
-                '1w': '1w',
-                '1M': '1M',
+                '6h': '6Hutc',
+                '12h': '12Hutc',
+                '1d': '1Dutc',
+                '3d': '3Dutc',
+                '1w': '1Wutc',
+                '1M': '1Mutc',
             },
             'hostname': 'bitget.com',
             'urls': {
@@ -136,6 +135,8 @@ class bitget(Exchange):
                 'api': {
                     'spot': 'https://api.{hostname}',
                     'mix': 'https://api.{hostname}',
+                    'user': 'https://api.{hostname}',
+                    'p2p': 'https://api.{hostname}',
                 },
                 'www': 'https://www.bitget.com',
                 'doc': [
@@ -238,7 +239,9 @@ class bitget(Exchange):
                             'plan/currentPlan': 2,
                             'plan/historyPlan': 2,
                             'position/singlePosition': 2,
+                            'position/singlePosition-v2': 2,
                             'position/allPosition': 2,
+                            'position/allPosition-v2': 2,
                             'trace/currentTrack': 2,
                             'trace/followerOrder': 2,
                             'trace/historyTrack': 2,
@@ -279,6 +282,28 @@ class bitget(Exchange):
                             'trace/followerCloseByTrackingNo': 2,
                             'trace/followerCloseByAll': 2,
                             'trace/followerSetTpsl': 2,
+                        },
+                    },
+                    'user': {
+                        'get': {
+                            'fee/query': 2,
+                            'sub/virtual-list': 2,
+                            'sub/virtual-api-list': 2,
+                        },
+                        'post': {
+                            'sub/virtual-create': 4,
+                            'sub/virtual-modify': 4,
+                            'sub/virtual-api-batch-create': 4,
+                            'sub/virtual-api-create': 4,
+                            'sub/virtual-api-modify': 4,
+                        },
+                    },
+                    'p2p': {
+                        'get': {
+                            'merchant/merchantList': 1,
+                            'merchant/merchantInfo': 1,
+                            'merchant/advList': 1,
+                            'merchant/orderList': 1,
                         },
                     },
                 },
@@ -661,7 +686,7 @@ class bitget(Exchange):
                     '40016': PermissionDenied,  # The user must bind the phone or Google
                     '40017': ExchangeError,  # Parameter verification failed
                     '40018': PermissionDenied,  # Invalid IP
-                    '40019': InvalidOrder,  # {"code":"40019","msg":"Parameter QLCUSDT_SPBL cannot be empty","requestTime":1679196063659,"data":null}
+                    '40019': BadRequest,  # {"code":"40019","msg":"Parameter QLCUSDT_SPBL cannot be empty","requestTime":1679196063659,"data":null}
                     '40102': BadRequest,  # Contract configuration does not exist, please check the parameters
                     '40103': BadRequest,  # Request method cannot be empty
                     '40104': ExchangeError,  # Lever adjustment failure
@@ -813,10 +838,10 @@ class bitget(Exchange):
             'options': {
                 'timeframes': {
                     'spot': {
-                        '1m': '1m',
-                        '5m': '5m',
-                        '15m': '15m',
-                        '30m': '30m',
+                        '1m': '1min',
+                        '5m': '5min',
+                        '15m': '15min',
+                        '30m': '30min',
                         '1h': '1h',
                         '4h': '4h',
                         '6h': '6Hutc',
@@ -1012,7 +1037,7 @@ class bitget(Exchange):
                 year = '20' + expiryString[0:2]
                 month = expiryString[2:4]
                 day = expiryString[4:6]
-                expiryDatetime = year + '-' + month + '-' + day + 'T00:00:00Z'
+                expiryDatetime = year + '-' + month + '-' + day + 'T00:00:00.000Z'
                 expiry = self.parse8601(expiryDatetime)
                 type = 'future'
                 future = True
@@ -1360,6 +1385,7 @@ class bitget(Exchange):
     async def withdraw(self, code: str, amount, address, tag=None, params={}):
         """
         make a withdrawal
+        see https://bitgetlimited.github.io/apidoc/en/spot/#withdraw-v2
         :param str code: unified currency code
         :param float amount: the amount to withdraw
         :param str address: the address to withdraw to
@@ -1369,20 +1395,22 @@ class bitget(Exchange):
         :returns dict: a `transaction structure <https://docs.ccxt.com/#/?id=transaction-structure>`
         """
         self.check_address(address)
-        chain = self.safe_string(params, 'chain')
+        chain = self.safe_string_2(params, 'chain', 'network')
+        params = self.omit(params, ['network'])
         if chain is None:
             raise ArgumentsRequired(self.id + ' withdraw() requires a chain parameter')
         await self.load_markets()
         currency = self.currency(code)
+        networkId = self.network_code_to_id(chain)
         request = {
             'coin': currency['code'],
             'address': address,
-            'chain': chain,
+            'chain': networkId,
             'amount': amount,
         }
         if tag is not None:
             request['tag'] = tag
-        response = await self.privateSpotPostWalletWithdrawal(self.extend(request, params))
+        response = await self.privateSpotPostWalletWithdrawalV2(self.extend(request, params))
         #
         #     {
         #         "code": "00000",
@@ -1591,17 +1619,16 @@ class bitget(Exchange):
         """
         await self.load_markets()
         market = self.market(symbol)
-        marketType, query = self.handle_market_type_and_params('fetchOrderBook', market, params)
-        method = self.get_supported_mapping(marketType, {
-            'spot': 'publicSpotGetMarketDepth',
-            'swap': 'publicMixGetMarketDepth',
-        })
         request = {
             'symbol': market['id'],
         }
         if limit is not None:
             request['limit'] = limit
-        response = await getattr(self, method)(self.extend(request, query))
+        response = None
+        if market['spot']:
+            response = await self.publicSpotGetMarketDepth(self.extend(request, params))
+        else:
+            response = await self.publicMixGetMarketDepth(self.extend(request, params))
         #
         #     {
         #       code: '00000',
@@ -1704,12 +1731,12 @@ class bitget(Exchange):
         request = {
             'symbol': market['id'],
         }
-        marketType, query = self.handle_market_type_and_params('fetchTicker', market, params)
-        method = self.get_supported_mapping(marketType, {
-            'spot': 'publicSpotGetMarketTicker',
-            'swap': 'publicMixGetMarketTicker',
-        })
-        response = await getattr(self, method)(self.extend(request, query))
+        response = None
+        extended = self.extend(request, params)
+        if market['spot']:
+            response = await self.publicSpotGetMarketTicker(extended)
+        else:
+            response = await self.publicMixGetMarketTicker(extended)
         #
         #     {
         #         code: '00000',
@@ -1749,19 +1776,20 @@ class bitget(Exchange):
             symbol = self.safe_value(symbols, 0)
             market = self.market(symbol)
         type, params = self.handle_market_type_and_params('fetchTickers', market, params)
-        method = self.get_supported_mapping(type, {
-            'spot': 'publicSpotGetMarketTickers',
-            'swap': 'publicMixGetMarketTickers',
-        })
         request = {}
-        if method == 'publicMixGetMarketTickers':
+        if type != 'spot':
             subType = None
             subType, params = self.handle_sub_type_and_params('fetchTickers', None, params)
             productType = 'UMCBL' if (subType == 'linear') else 'DMCBL'
             if sandboxMode:
                 productType = 'S' + productType
             request['productType'] = productType
-        response = await getattr(self, method)(self.extend(request, params))
+        extended = self.extend(request, params)
+        response = None
+        if type == 'spot':
+            response = await self.publicSpotGetMarketTickers(extended)
+        else:
+            response = await self.publicMixGetMarketTickers(extended)
         #
         # spot
         #
@@ -1918,12 +1946,12 @@ class bitget(Exchange):
         }
         if limit is not None:
             request['limit'] = limit
-        marketType, query = self.handle_market_type_and_params('fetchTrades', market, params)
-        method = self.get_supported_mapping(marketType, {
-            'spot': 'publicSpotGetMarketFills',
-            'swap': 'publicMixGetMarketFills',
-        })
-        response = await getattr(self, method)(self.extend(request, query))
+        extended = self.extend(request, params)
+        response = None
+        if market['spot']:
+            response = await self.publicSpotGetMarketFills(extended)
+        else:
+            response = await self.publicMixGetMarketFills(extended)
         #
         #     {
         #       code: '00000',
@@ -2029,7 +2057,7 @@ class bitget(Exchange):
             'taker': self.safe_number(data, 'takerFeeRate'),
         }
 
-    def parse_ohlcv(self, ohlcv, market=None, timeframe='1m'):
+    def parse_ohlcv(self, ohlcv, market=None):
         #
         # spot
         #
@@ -2068,6 +2096,8 @@ class bitget(Exchange):
     async def fetch_ohlcv(self, symbol: str, timeframe='1m', since: Optional[int] = None, limit: Optional[int] = None, params={}):
         """
         fetches historical candlestick data containing the open, high, low, and close price, and the volume of a market
+        see https://bitgetlimited.github.io/apidoc/en/mix/#get-candle-data
+        see https://bitgetlimited.github.io/apidoc/en/spot/#candlestick-line-timeframe
         :param str symbol: unified symbol of the market to fetch OHLCV data for
         :param str timeframe: the length of time each candle represents
         :param int|None since: timestamp in ms of the earliest candle to fetch
@@ -2081,14 +2111,11 @@ class bitget(Exchange):
         request = {
             'symbol': market['id'],
         }
-        marketType, query = self.handle_market_type_and_params('fetchOHLCV', market, params)
-        method = self.get_supported_mapping(marketType, {
-            'spot': 'publicSpotGetMarketCandles',
-            'swap': 'publicMixGetMarketCandles',
-        })
-        until = self.safe_integer_2(query, 'until', 'till')
+        until = self.safe_integer_2(params, 'until', 'till')
         if limit is None:
-            limit = 100
+            limit = 1000
+        request['limit'] = limit
+        marketType = 'spot' if market['spot'] else 'swap'
         timeframes = self.options['timeframes'][marketType]
         selectedTimeframe = self.safe_string(timeframes, timeframe, timeframe)
         duration = self.parse_timeframe(timeframe)
@@ -2101,20 +2128,25 @@ class bitget(Exchange):
                     request['before'] = self.sum(since, limit * duration * 1000)
             if until is not None:
                 request['before'] = until
-        elif market['swap']:
+        elif market['contract']:
             request['granularity'] = selectedTimeframe
             now = self.milliseconds()
             if since is None:
-                request['startTime'] = now - (limit - 1) * (duration * 1000)
+                request['startTime'] = now - limit * (duration * 1000)
                 request['endTime'] = now
             else:
-                request['startTime'] = self.sum(since, duration * 1000)
+                request['startTime'] = since
                 if until is not None:
                     request['endTime'] = until
                 else:
                     request['endTime'] = self.sum(since, limit * duration * 1000)
-        ommitted = self.omit(query, ['until', 'till'])
-        response = await getattr(self, method)(self.extend(request, ommitted))
+        ommitted = self.omit(params, ['until', 'till'])
+        extended = self.extend(request, ommitted)
+        response = None
+        if market['spot']:
+            response = await self.publicSpotGetMarketCandles(extended)
+        else:
+            response = await self.publicMixGetMarketCandles(extended)
         #  [["1645911960000","39406","39407","39374.5","39379","35.526","1399132.341"]]
         data = self.safe_value(response, 'data', response)
         return self.parse_ohlcvs(data, market, timeframe, since, limit)
@@ -2360,6 +2392,7 @@ class bitget(Exchange):
         method = self.get_supported_mapping(marketType, {
             'spot': 'privateSpotPostTradeOrders',
             'swap': 'privateMixPostOrderPlaceOrder',
+            'future': 'privateMixPostOrderPlaceOrder',
         })
         exchangeSpecificTifParam = self.safe_string_n(params, ['force', 'timeInForceValue', 'timeInForce'])
         postOnly = None
@@ -2481,6 +2514,7 @@ class bitget(Exchange):
         method = self.get_supported_mapping(marketType, {
             'spot': 'privateSpotPostPlanModifyPlan',
             'swap': 'privateMixPostPlanModifyPlan',
+            'future': 'privateMixPostPlanModifyPlan',
         })
         if triggerPrice is not None:
             # default triggerType to market price for unification
@@ -2548,6 +2582,7 @@ class bitget(Exchange):
         method = self.get_supported_mapping(marketType, {
             'spot': 'privateSpotPostTradeCancelOrder',
             'swap': 'privateMixPostOrderCancelOrder',
+            'future': 'privateMixPostOrderCancelOrder',
         })
         request = {
             'symbol': market['id'],
@@ -2588,7 +2623,7 @@ class bitget(Exchange):
             method = 'privateSpotPostTradeCancelBatchOrdersV2'
             request['symbol'] = market['id']
             request['orderIds'] = ids
-        elif type == 'swap':
+        else:
             method = 'privateMixPostOrderCancelBatchOrders'
             request['symbol'] = market['id']
             request['marginCoin'] = market['quote']
@@ -2708,6 +2743,7 @@ class bitget(Exchange):
         method = self.get_supported_mapping(marketType, {
             'spot': 'privateSpotPostTradeOrderInfo',
             'swap': 'privateMixGetOrderDetail',
+            'future': 'privateMixGetOrderDetail',
         })
         request = {
             'symbol': market['id'],
@@ -2771,6 +2807,10 @@ class bitget(Exchange):
 
     async def fetch_open_orders(self, symbol: Optional[str] = None, since: Optional[int] = None, limit: Optional[int] = None, params={}):
         """
+        see https://bitgetlimited.github.io/apidoc/en/spot/#get-order-list
+        see https://bitgetlimited.github.io/apidoc/en/mix/#get-all-open-order
+        see https://bitgetlimited.github.io/apidoc/en/mix/#get-plan-order-tpsl-list
+        see https://bitgetlimited.github.io/apidoc/en/mix/#get-open-order
         fetch all unfilled currently open orders
         :param str symbol: unified market symbol
         :param int|None since: the earliest time in ms to fetch open orders for
@@ -2778,29 +2818,41 @@ class bitget(Exchange):
         :param dict params: extra parameters specific to the bitget api endpoint
         :returns [dict]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
         """
-        self.check_required_symbol('fetchOpenOrders', symbol)
         await self.load_markets()
-        market = self.market(symbol)
+        request = {}
         marketType = None
         query = None
+        market = None
+        if symbol is not None:
+            market = self.market(symbol)
+            request['symbol'] = market['id']
         marketType, query = self.handle_market_type_and_params('fetchOpenOrders', market, params)
-        request = {
-            'symbol': market['id'],
-        }
-        method = self.get_supported_mapping(marketType, {
-            'spot': 'privateSpotPostTradeOpenOrders',
-            'swap': 'privateMixGetOrderCurrent',
-        })
+        response = None
         stop = self.safe_value(query, 'stop')
         if stop:
+            self.check_required_symbol('fetchOpenOrders', symbol)
+            query = self.omit(query, 'stop')
             if marketType == 'spot':
-                method = 'privateSpotPostPlanCurrentPlan'
                 if limit is not None:
                     request['pageSize'] = limit
+                response = await self.privateSpotPostPlanCurrentPlan(self.extend(request, query))
             else:
-                method = 'privateMixGetPlanCurrentPlan'
-            query = self.omit(query, 'stop')
-        response = await getattr(self, method)(self.extend(request, query))
+                response = await self.privateMixGetPlanCurrentPlan(self.extend(request, query))
+        else:
+            if marketType == 'spot':
+                response = await self.privateSpotPostTradeOpenOrders(self.extend(request, query))
+            else:
+                if market is None:
+                    subType = None
+                    subType, params = self.handle_sub_type_and_params('fetchOpenOrders', None, params)
+                    productType = 'UMCBL' if (subType == 'linear') else 'DMCBL'
+                    sandboxMode = self.safe_value(self.options, 'sandboxMode', False)
+                    if sandboxMode:
+                        productType = 'S' + productType
+                    request['productType'] = productType
+                    response = await self.privateMixGetOrderMarginCoinCurrent(self.extend(request, query))
+                else:
+                    response = await self.privateMixGetOrderCurrent(self.extend(request, query))
         #
         #  spot
         #     {
@@ -2968,6 +3020,7 @@ class bitget(Exchange):
         method = self.get_supported_mapping(marketType, {
             'spot': 'privateSpotPostTradeHistory',
             'swap': 'privateMixGetOrderHistory',
+            'future': 'privateMixGetOrderHistory',
         })
         stop = self.safe_value(params, 'stop')
         if stop:
@@ -3251,6 +3304,7 @@ class bitget(Exchange):
         method = self.get_supported_mapping(marketType, {
             'spot': 'privateSpotPostTradeFills',
             'swap': 'privateMixGetOrderFills',
+            'future': 'privateMixGetOrderFills',
         })
         request = {
             'symbol': market['id'],
@@ -3296,7 +3350,7 @@ class bitget(Exchange):
             'symbol': market['id'],
             'marginCoin': market['settleId'],
         }
-        response = await self.privateMixGetPositionSinglePosition(self.extend(request, params))
+        response = await self.privateMixGetPositionSinglePositionV2(self.extend(request, params))
         #
         #     {
         #       code: '00000',
@@ -3349,7 +3403,7 @@ class bitget(Exchange):
         request = {
             'productType': productType,
         }
-        response = await self.privateMixGetPositionAllPosition(self.extend(request, params))
+        response = await self.privateMixGetPositionAllPositionV2(self.extend(request, params))
         #
         #     {
         #       code: '00000',
@@ -3530,12 +3584,12 @@ class bitget(Exchange):
         for i in range(0, len(data)):
             entry = data[i]
             marketId = self.safe_string(entry, 'symbol')
-            symbol = self.safe_symbol(marketId, market)
+            symbolInner = self.safe_symbol(marketId, market)
             timestamp = self.safe_integer(entry, 'settleTime')
             rates.append({
                 'info': entry,
-                'symbol': symbol,
-                'fundingRate': self.safe_string(entry, 'fundingRate'),
+                'symbol': symbolInner,
+                'fundingRate': self.safe_number(entry, 'fundingRate'),
                 'timestamp': timestamp,
                 'datetime': self.iso8601(timestamp),
             })
@@ -3962,7 +4016,7 @@ class bitget(Exchange):
 
     async def transfer(self, code: str, amount, fromAccount, toAccount, params={}):
         """
-        see https://bitgetlimited.github.io/apidoc/en/spot/#transfer
+        see https://bitgetlimited.github.io/apidoc/en/spot/#transfer-v2
         transfer currency internally between wallets on the same account
         :param str code: unified currency code
         :param float amount: amount to transfer
@@ -3989,7 +4043,7 @@ class bitget(Exchange):
             'amount': amount,
             'coin': currency['info']['coinName'],
         }
-        response = await self.privateSpotPostWalletTransfer(self.extend(request, params))
+        response = await self.privateSpotPostWalletTransferV2(self.extend(request, params))
         #
         #    {
         #        "code": "00000",
@@ -4079,7 +4133,7 @@ class bitget(Exchange):
 
     def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if not response:
-            return  # fallback to default error handler
+            return None  # fallback to default error handler
         #
         # spot
         #
@@ -4116,11 +4170,20 @@ class bitget(Exchange):
             self.throw_exactly_matched_exception(self.exceptions['exact'], errorCode, feedback)
         if nonZeroErrorCode or nonEmptyMessage:
             raise ExchangeError(feedback)  # unknown message
+        return None
 
     def sign(self, path, api=[], method='GET', params={}, headers=None, body=None):
         signed = api[0] == 'private'
         endpoint = api[1]
-        pathPart = '/api/spot/v1' if (endpoint == 'spot') else '/api/mix/v1'
+        pathPart = ''
+        if endpoint == 'spot':
+            pathPart = '/api/spot/v1'
+        elif endpoint == 'mix':
+            pathPart = '/api/mix/v1'
+        elif endpoint == 'user':
+            pathPart = '/api/user/v1'
+        else:
+            pathPart = '/api/p2p/v1'
         request = '/' + self.implode_params(path, params)
         payload = pathPart + request
         url = self.implode_hostname(self.urls['api'][endpoint]) + payload
@@ -4139,9 +4202,9 @@ class bitget(Exchange):
                 auth += body
             else:
                 if params:
-                    query = '?' + self.urlencode(self.keysort(params))
-                    url += query
-                    auth += query
+                    queryInner = '?' + self.urlencode(self.keysort(params))
+                    url += queryInner
+                    auth += queryInner
             signature = self.hmac(self.encode(auth), self.encode(self.secret), hashlib.sha256, 'base64')
             broker = self.safe_string(self.options, 'broker')
             headers = {

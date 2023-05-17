@@ -73,7 +73,9 @@ interface Exchange {
     privateMixGetPlanCurrentPlan(params?: {}): Promise<implicitReturnType>;
     privateMixGetPlanHistoryPlan(params?: {}): Promise<implicitReturnType>;
     privateMixGetPositionSinglePosition(params?: {}): Promise<implicitReturnType>;
+    privateMixGetPositionSinglePositionV2(params?: {}): Promise<implicitReturnType>;
     privateMixGetPositionAllPosition(params?: {}): Promise<implicitReturnType>;
+    privateMixGetPositionAllPositionV2(params?: {}): Promise<implicitReturnType>;
     privateMixGetTraceCurrentTrack(params?: {}): Promise<implicitReturnType>;
     privateMixGetTraceFollowerOrder(params?: {}): Promise<implicitReturnType>;
     privateMixGetTraceHistoryTrack(params?: {}): Promise<implicitReturnType>;
@@ -112,6 +114,18 @@ interface Exchange {
     privateMixPostTraceFollowerCloseByTrackingNo(params?: {}): Promise<implicitReturnType>;
     privateMixPostTraceFollowerCloseByAll(params?: {}): Promise<implicitReturnType>;
     privateMixPostTraceFollowerSetTpsl(params?: {}): Promise<implicitReturnType>;
+    privateUserGetFeeQuery(params?: {}): Promise<implicitReturnType>;
+    privateUserGetSubVirtualList(params?: {}): Promise<implicitReturnType>;
+    privateUserGetSubVirtualApiList(params?: {}): Promise<implicitReturnType>;
+    privateUserPostSubVirtualCreate(params?: {}): Promise<implicitReturnType>;
+    privateUserPostSubVirtualModify(params?: {}): Promise<implicitReturnType>;
+    privateUserPostSubVirtualApiBatchCreate(params?: {}): Promise<implicitReturnType>;
+    privateUserPostSubVirtualApiCreate(params?: {}): Promise<implicitReturnType>;
+    privateUserPostSubVirtualApiModify(params?: {}): Promise<implicitReturnType>;
+    privateP2pGetMerchantMerchantList(params?: {}): Promise<implicitReturnType>;
+    privateP2pGetMerchantMerchantInfo(params?: {}): Promise<implicitReturnType>;
+    privateP2pGetMerchantAdvList(params?: {}): Promise<implicitReturnType>;
+    privateP2pGetMerchantOrderList(params?: {}): Promise<implicitReturnType>;
 }
 declare abstract class Exchange extends _Exchange {
 }

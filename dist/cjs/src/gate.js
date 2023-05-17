@@ -77,6 +77,7 @@ class gate extends gate$1 {
                 'createMarketOrder': true,
                 'createOrder': true,
                 'createPostOnlyOrder': true,
+                'createReduceOnlyOrder': true,
                 'createStopLimitOrder': true,
                 'createStopMarketOrder': false,
                 'createStopOrder': true,
@@ -86,6 +87,7 @@ class gate extends gate$1 {
                 'fetchBorrowRateHistories': false,
                 'fetchBorrowRateHistory': false,
                 'fetchBorrowRates': false,
+                'fetchBorrowRatesPerSymbol': false,
                 'fetchClosedOrders': true,
                 'fetchCurrencies': true,
                 'fetchDepositAddress': true,
@@ -126,6 +128,7 @@ class gate extends gate$1 {
                 'repayMargin': true,
                 'setLeverage': true,
                 'setMarginMode': false,
+                'signIn': false,
                 'transfer': true,
                 'withdraw': true,
             },
@@ -1083,8 +1086,8 @@ class gate extends gate$1 {
             //        }
             //    ]
             //
-            for (let i = 0; i < response.length; i++) {
-                const market = response[i];
+            for (let j = 0; j < response.length; j++) {
+                const market = response[j];
                 const id = this.safeString(market, 'name');
                 const parts = underlying.split('_');
                 const baseId = this.safeString(parts, 0);
@@ -1354,6 +1357,7 @@ class gate extends gate$1 {
                 'fee': undefined,
                 'fees': [],
                 'limits': this.limits,
+                'networks': {},
             };
         }
         return result;
@@ -1797,8 +1801,8 @@ class gate extends gate$1 {
             }
             else {
                 const chainKeys = Object.keys(withdrawFixOnChains);
-                for (let i = 0; i < chainKeys.length; i++) {
-                    const chainKey = chainKeys[i];
+                for (let j = 0; j < chainKeys.length; j++) {
+                    const chainKey = chainKeys[j];
                     withdrawFees[chainKey] = this.parseNumber(withdrawFixOnChains[chainKey]);
                 }
             }
@@ -2396,7 +2400,7 @@ class gate extends gate$1 {
             const entry = data[i];
             if (isolated) {
                 const marketId = this.safeString(entry, 'currency_pair');
-                const symbol = this.safeSymbol(marketId, undefined, '_', 'margin');
+                const symbolInner = this.safeSymbol(marketId, undefined, '_', 'margin');
                 const base = this.safeValue(entry, 'base', {});
                 const quote = this.safeValue(entry, 'quote', {});
                 const baseCode = this.safeCurrencyCode(this.safeString(base, 'currency'));
@@ -2404,7 +2408,7 @@ class gate extends gate$1 {
                 const subResult = {};
                 subResult[baseCode] = this.parseBalanceHelper(base);
                 subResult[quoteCode] = this.parseBalanceHelper(quote);
-                result[symbol] = this.safeBalance(subResult);
+                result[symbolInner] = this.safeBalance(subResult);
             }
             else {
                 const code = this.safeCurrencyCode(this.safeString(entry, 'currency'));
@@ -2617,6 +2621,7 @@ class gate extends gate$1 {
             'margin': 'publicSpotGetTrades',
             'swap': 'publicFuturesGetSettleTrades',
             'future': 'publicDeliveryGetSettleTrades',
+            'option': 'publicOptionsGetTrades',
         });
         if (limit !== undefined) {
             request['limit'] = limit; // default 100, max 1000
@@ -2650,6 +2655,18 @@ class gate extends gate$1 {
         //              create_time: "1634673380.182",
         //              contract: "ADA_USDT",
         //              price: "2.10486",
+        //         }
+        //     ]
+        //
+        // option
+        //
+        //     [
+        //         {
+        //             "size": -5,
+        //             "id": 25,
+        //             "create_time": 1682378573,
+        //             "contract": "ETH_USDT-20230526-2000-P",
+        //             "price": "209.1"
         //         }
         //     ]
         //
@@ -2863,6 +2880,16 @@ class gate extends gate$1 {
         //         "size": 100,
         //         "price": "100.123",
         //         "role": "taker"
+        //     }
+        //
+        // option rest
+        //
+        //     {
+        //         "size": -5,
+        //         "id": 25,
+        //         "create_time": 1682378573,
+        //         "contract": "ETH_USDT-20230526-2000-P",
+        //         "price": "209.1"
         //     }
         //
         const id = this.safeString(trade, 'id');
@@ -4016,8 +4043,8 @@ class gate extends gate$1 {
         if (openSpotOrders) {
             result = [];
             for (let i = 0; i < response.length; i++) {
-                const orders = this.safeValue(response[i], 'orders');
-                result = this.arrayConcat(result, orders);
+                const ordersInner = this.safeValue(response[i], 'orders');
+                result = this.arrayConcat(result, ordersInner);
             }
         }
         const orders = this.parseOrders(result, market, since, limit);
@@ -5156,7 +5183,7 @@ class gate extends gate$1 {
     }
     handleErrors(code, reason, url, method, headers, body, response, requestHeaders, requestBody) {
         if (response === undefined) {
-            return;
+            return undefined;
         }
         //
         //    {"label": "ORDER_NOT_FOUND", "message": "Order not found"}
@@ -5171,6 +5198,7 @@ class gate extends gate$1 {
             this.throwExactlyMatchedException(this.exceptions['exact'], label, feedback);
             throw new errors.ExchangeError(feedback);
         }
+        return undefined;
     }
 }
 

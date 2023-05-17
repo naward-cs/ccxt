@@ -70,7 +70,7 @@ class deribit extends \ccxt\async\deribit {
              * @param {array} $params extra parameters specific to the deribit api endpoint
              * @return {array} a ~@link https://docs.ccxt.com/en/latest/manual.html?#balance-structure balance structure~
              */
-            $this->authenticate($params);
+            Async\await($this->authenticate($params));
             $messageHash = 'balance';
             $url = $this->urls['api']['ws'];
             $currencies = $this->safe_value($this->options, 'currencies', array());
@@ -157,13 +157,14 @@ class deribit extends \ccxt\async\deribit {
              * @param {str|null} $params->interval specify aggregation and frequency of notifications. Possible values => 100ms, raw
              * @return {array} a ~@link https://docs.ccxt.com/#/?id=ticker-structure ticker structure~
              */
+            Async\await($this->load_markets());
             $market = $this->market($symbol);
             $url = $this->urls['api']['ws'];
             $interval = $this->safe_string($params, 'interval', '100ms');
             $params = $this->omit($params, 'interval');
             Async\await($this->load_markets());
             if ($interval === 'raw') {
-                $this->authenticate();
+                Async\await($this->authenticate());
             }
             $channel = 'ticker.' . $market['id'] . '.' . $interval;
             $message = array(
@@ -238,7 +239,7 @@ class deribit extends \ccxt\async\deribit {
             $params = $this->omit($params, 'interval');
             $channel = 'trades.' . $market['id'] . '.' . $interval;
             if ($interval === 'raw') {
-                $this->authenticate();
+                Async\await($this->authenticate());
             }
             $message = array(
                 'jsonrpc' => '2.0',
@@ -250,7 +251,10 @@ class deribit extends \ccxt\async\deribit {
             );
             $request = $this->deep_extend($message, $params);
             $trades = Async\await($this->watch($url, $channel, $request, $channel, $request));
-            return $this->filter_by_since_limit($trades, $since, $limit, 'timestamp', true);
+            if ($this->newUpdates) {
+                $limit = $trades->getLimit ($symbol, $limit);
+            }
+            return $this->filter_by_since_limit($trades, $since, $limit, 'timestamp');
         }) ();
     }
 
@@ -310,7 +314,7 @@ class deribit extends \ccxt\async\deribit {
              * @param {str|null} $params->interval specify aggregation and frequency of notifications. Possible values => 100ms, raw
              * @return {[array]} a list of ~@link https://docs.ccxt.com/en/latest/manual.html?#public-$trades trade structures~
              */
-            $this->authenticate($params);
+            Async\await($this->authenticate($params));
             if ($symbol !== null) {
                 Async\await($this->load_markets());
                 $symbol = $this->symbol($symbol);
@@ -329,7 +333,7 @@ class deribit extends \ccxt\async\deribit {
             );
             $request = $this->deep_extend($message, $params);
             $trades = Async\await($this->watch($url, $channel, $request, $channel, $request));
-            return $this->filter_by_symbol_since_limit($trades, $symbol, $since, $limit, true);
+            return $this->filter_by_symbol_since_limit($trades, $symbol, $since, $limit);
         }) ();
     }
 
@@ -402,7 +406,7 @@ class deribit extends \ccxt\async\deribit {
             $interval = $this->safe_string($params, 'interval', '100ms');
             $params = $this->omit($params, 'interval');
             if ($interval === 'raw') {
-                $this->authenticate();
+                Async\await($this->authenticate());
             }
             $channel = 'book.' . $market['id'] . '.' . $interval;
             $subscribe = array(
@@ -531,7 +535,7 @@ class deribit extends \ccxt\async\deribit {
              * @return {[array]} a list of [order structures]{@link https://docs.ccxt.com/#/?id=order-structure
              */
             Async\await($this->load_markets());
-            $this->authenticate($params);
+            Async\await($this->authenticate($params));
             if ($symbol !== null) {
                 $symbol = $this->symbol($symbol);
             }
@@ -554,7 +558,7 @@ class deribit extends \ccxt\async\deribit {
             if ($this->newUpdates) {
                 $limit = $orders->getLimit ($symbol, $limit);
             }
-            return $this->filter_by_symbol_since_limit($orders, $symbol, $since, $limit, true);
+            return $this->filter_by_symbol_since_limit($orders, $symbol, $since, $limit);
         }) ();
     }
 
@@ -647,7 +651,7 @@ class deribit extends \ccxt\async\deribit {
             if ($this->newUpdates) {
                 $limit = $ohlcv->getLimit ($market['symbol'], $limit);
             }
-            return $this->filter_by_since_limit($ohlcv, $since, $limit, 0, true);
+            return $this->filter_by_since_limit($ohlcv, $since, $limit, 0);
         }) ();
     }
 
@@ -837,7 +841,8 @@ class deribit extends \ccxt\async\deribit {
                     'data' => '',
                 ),
             );
-            $future = $this->watch($url, $messageHash, array_merge($request, $params), $messageHash);
+            $future = $this->watch($url, $messageHash, array_merge($request, $params));
+            $client->subscriptions[$messageHash] = $future;
         }
         return $future;
     }
